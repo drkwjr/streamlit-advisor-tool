@@ -4,7 +4,6 @@ import io
 import os
 from openai import OpenAI
 from dotenv import load_dotenv
-import base64
 import requests
 import json
 import re
@@ -45,9 +44,7 @@ def _clean_possible_json(text: str) -> str:
     """Strip code fences and try to isolate a JSON object."""
     if not text:
         return ""
-    # Remove backticked fences if present
     cleaned = re.sub(r"```(json)?", "", text, flags=re.IGNORECASE).strip("` \n\r\t")
-    # Try to extract the first {...} block if wrapped in prose
     match = re.search(r"\{.*\}", cleaned, flags=re.DOTALL)
     return match.group(0) if match else cleaned
 
@@ -76,9 +73,9 @@ def render_analysis_ui(result_text: str):
 
     if isinstance(parsed, dict):
         doc_type = _normalize_type(
-            parsed.get("document_type") or parsed.get("type") or parsed.get("document") or ""
+            parsed.get("document_type") or parsed.get("type") or ""
         )
-        explanation = parsed.get("explanation") or parsed.get("reason") or parsed.get("summary") or ""
+        explanation = parsed.get("explanation") or parsed.get("reason") or ""
 
         chip_class = {
             "administrative": "chip-admin",
@@ -108,7 +105,6 @@ def render_analysis_ui(result_text: str):
         st.markdown("</div>", unsafe_allow_html=True)
 
     else:
-        # Fallback: show the raw text nicely
         st.markdown('<div class="card">', unsafe_allow_html=True)
         st.markdown(
             """
@@ -138,7 +134,6 @@ Return ONLY valid compact JSON with these exact keys (no extra text, no markdown
     )
 
     try:
-        # Upload to Files API
         upload_url = "https://api.openai.com/v1/files"
         headers = {"Authorization": f"Bearer {OPENAI_API_KEY}"}
         files = {"file": (filename, io.BytesIO(file_bytes), mime_type)}
@@ -154,20 +149,19 @@ Return ONLY valid compact JSON with these exact keys (no extra text, no markdown
         if not file_id:
             return f"Error uploading file: no file id returned: {upload_json}"
 
-        # Chat completion referencing the uploaded file
         response = client.chat.completions.create(
             model="gpt-5-nano",
             messages=[
-                {"role": "system", "content": "You are a helpful legal analysis assistant."},
+                {"role": "system", "content": "You are a helpful legal‐analysis assistant."},
                 {
                     "role": "user",
                     "content": [
                         {"type": "text", "text": prompt},
-                        {"type": "file", "file": {"file_id": file_id}},
-                    ],
-                },
-            ],
-            temperature=0,  # encourage deterministic JSON
+                        {"type": "file", "file": {"file_id": file_id}}
+                    ]
+                }
+            ]
+            # Note: no temperature param (not needed / supported for this model)
         )
 
         return response.choices[0].message.content
@@ -179,59 +173,4 @@ def process_uploaded_file(uploaded_file):
     Processes the uploaded file:
     - For image files, returns a PIL Image for preview.
     - For PDFs, no preview is shown.
-    Returns (file_bytes, mime_type, preview_image, filename).
-    """
-    file_bytes = uploaded_file.getvalue()
-    mime_type = uploaded_file.type
-    filename = getattr(uploaded_file, "name", "uploaded_document")
-
-    preview_image = None
-    if mime_type != "application/pdf":
-        uploaded_file.seek(0)
-        try:
-            preview_image = Image.open(uploaded_file)
-        except Exception:
-            st.warning("Could not open the image for preview.")
-    return file_bytes, mime_type, preview_image, filename
-
-def main():
-    st.title("Document Analysis Tool")
-    st.write("Upload a document (image or PDF) and get a quick classification with a plain-English explanation.")
-
-    input_method = st.radio("Choose input method:", ("Upload File", "Capture Image"), horizontal=True)
-
-    uploaded_file = st.file_uploader("Choose a file", type=["jpg", "jpeg", "png", "pdf"]) if input_method == "Upload File" else st.camera_input("Capture an image")
-
-    if uploaded_file is not None:
-        file_bytes, mime_type, preview_image, filename = process_uploaded_file(uploaded_file)
-
-        # Layout: Preview (left) | Details (right)
-        col1, col2 = st.columns([3, 2], vertical_alignment="top")
-
-        with col1:
-            st.markdown('<div class="card">', unsafe_allow_html=True)
-            st.markdown('<div class="meta">Preview</div>', unsafe_allow_html=True)
-            if mime_type != "application/pdf" and preview_image:
-                st.image(preview_image, caption="Uploaded/Captured Image", use_column_width=True)
-            else:
-                st.write("PDF uploaded. Preview not shown.")
-            st.markdown("</div>", unsafe_allow_html=True)
-
-        with col2:
-            st.markdown('<div class="card">', unsafe_allow_html=True)
-            st.markdown('<div class="meta">File</div>', unsafe_allow_html=True)
-            st.markdown(f'<div class="filename">{filename}</div>', unsafe_allow_html=True)
-            st.caption(f"MIME type: {mime_type or 'unknown'} • Size: {len(file_bytes):,} bytes")
-            st.markdown("</div>", unsafe_allow_html=True)
-
-        with st.spinner("Analyzing the document..."):
-            analysis_result = analyze_document(file_bytes, mime_type, filename=filename)
-
-        if isinstance(analysis_result, str) and analysis_result.startswith("Error"):
-            st.error(analysis_result)
-        else:
-            st.success("Analysis Complete")
-            render_analysis_ui(analysis_result)
-
-if __name__ == "__main__":
-    main()
+    Returns (file_b_
